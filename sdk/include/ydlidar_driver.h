@@ -53,6 +53,8 @@ using namespace serial;
 
 namespace ydlidar {
 
+std::string format(const char *fmt, ...);
+
 class YDlidarDriver {
  public:
   /**
@@ -475,7 +477,7 @@ class YDlidarDriver {
     YDLIDAR_X4 = 6,
     YDLIDAR_G4PRO = 7,
     YDLIDAR_F4PRO = 8,
-    YDLIDAR_G2_SS_1 = 9,//230400
+    YDLIDAR_G1   = 9,//230400
     YDLIDAR_G10 = 10, //256000
     YDLIDAR_S4B = 11,//153600
     YDLIDAR_S2 = 12,//115200

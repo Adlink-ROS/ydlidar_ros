@@ -35,6 +35,7 @@
 #include "common.h"
 #include <map>
 #include <angles.h>
+#include <regex>
 
 using namespace std;
 using namespace ydlidar;
@@ -67,6 +68,8 @@ CYdLidar::CYdLidar(): lidarPtr(nullptr) {
   node_duration = 1e9 / 5000;
   m_OffsetTime = 0.0;
   last_node_time = getTime();
+  m_isAngleOffsetCorrected = false;
+  m_AngleOffset = 0.0;
 }
 
 /*-------------------------------------------------------------
@@ -85,6 +88,16 @@ void CYdLidar::disconnecting() {
 
   isScanning = false;
 }
+
+//get zero angle offset value
+float CYdLidar::getAngleOffset() const {
+  return m_AngleOffset;
+}
+
+bool CYdLidar::isAngleOffetCorrected() const {
+  return m_isAngleOffsetCorrected;
+}
+
 
 /*-------------------------------------------------------------
 						doProcessSimple
@@ -156,7 +169,7 @@ bool  CYdLidar::doProcessSimple(LaserScan &outscan, bool &hardwareError) {
 
     for (int i = 0; i < count; i++) {
       angle = (float)((nodes[i].angle_q6_checkbit >>
-                       LIDAR_RESP_MEASUREMENT_ANGLE_SHIFT) / 64.0f);
+                       LIDAR_RESP_MEASUREMENT_ANGLE_SHIFT) / 64.0f) + m_AngleOffset;
       range = (float)nodes[i].distance_q2 / 4000.f;
       intensity = (float)(nodes[i].sync_quality);
       angle = angles::from_degrees(angle);
@@ -337,17 +350,17 @@ bool CYdLidar::getDeviceInfo() {
     return false;
   }
 
-  if (devinfo.model != YDlidarDriver::YDLIDAR_G2A) {
+  if (devinfo.model != YDlidarDriver::YDLIDAR_G1) {
     printf("[YDLIDAR INFO] Current SDK does not support current lidar models[%d]\n",
            devinfo.model);
     return false;
   }
 
-  std::string model = "G2A";
+  std::string model = "G1";
 
   switch (devinfo.model) {
-    case YDlidarDriver::YDLIDAR_G2A:
-      model = "G2A";
+    case YDlidarDriver::YDLIDAR_G1:
+      model = "G1";
       frequencyOffset     = 0.4;
       break;
 
@@ -357,6 +370,7 @@ bool CYdLidar::getDeviceInfo() {
 
   Major = (uint8_t)(devinfo.firmware_version >> 8);
   Minjor = (uint8_t)(devinfo.firmware_version & 0xff);
+  std::string serial_number;
   printf("[YDLIDAR] Connection established in [%s][%d]:\n"
          "Firmware version: %u.%u\n"
          "Hardware version: %u\n"
@@ -370,10 +384,24 @@ bool CYdLidar::getDeviceInfo() {
          model.c_str());
 
   for (int i = 0; i < 16; i++) {
-    printf("%01X", devinfo.serialnum[i] & 0xff);
+    serial_number += format("%01X", devinfo.serialnum[i] & 0xff);
   }
 
-  printf("\n");
+  printf("%s\n", serial_number.c_str());
+  m_serial_number = serial_number;
+  std::regex
+  rx("^2(\\d{3})(0\\d{1}|1[0-2])(0\\d{1}|[12]\\d{1}|3[01])(\\d{4})(\\d{4})$");
+  std::smatch result;
+
+  if (!regex_match(serial_number, result, rx)) {
+    fprintf(stderr, "Invalid lidar serial number!!!\n");
+    return false;
+  }
+
+  if (devinfo.model == YDlidarDriver::YDLIDAR_G1) {
+    checkCalibrationAngle(serial_number);
+  }
+
   printf("[YDLIDAR INFO] Current Sampling Rate : %dK\n", m_SampleRate);
   checkScanFrequency();
   return true;
@@ -441,6 +469,43 @@ bool CYdLidar::checkScanFrequency() {
   return true;
 }
 
+/*-------------------------------------------------------------
+                        checkCalibrationAngle
+-------------------------------------------------------------*/
+void CYdLidar::checkCalibrationAngle(const std::string &serialNumber) {
+  m_AngleOffset = 0.0;
+  result_t ans;
+  offset_angle angle;
+  int retry = 0;
+  m_isAngleOffsetCorrected = false;
+
+  while (retry < 2) {
+    ans = lidarPtr->getZeroOffsetAngle(angle);
+
+    if (IS_OK(ans)) {
+      if (angle.angle > 720 || angle.angle < -720) {
+        ans = lidarPtr->getZeroOffsetAngle(angle);
+
+        if (!IS_OK(ans)) {
+          continue;
+          retry++;
+        }
+      }
+
+      m_isAngleOffsetCorrected = (angle.angle != 720);
+      m_AngleOffset = angle.angle / 4.0;
+      printf("[YDLIDAR INFO] Successfully obtained the %s offset angle[%f] from the lidar[%s]\n"
+             , m_isAngleOffsetCorrected ? "corrected" : "uncorrrected", m_AngleOffset,
+             serialNumber.c_str());
+      return;
+    }
+
+    retry++;
+  }
+
+  printf("[YDLIDAR INFO] Current %s AngleOffset : %f°\n",
+         m_isAngleOffsetCorrected ? "corrected" : "uncorrrected", m_AngleOffset);
+}
 
 /*-------------------------------------------------------------
 						checkCOMMs

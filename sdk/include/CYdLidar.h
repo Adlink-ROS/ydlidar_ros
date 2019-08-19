@@ -88,6 +88,12 @@ class YDLIDAR_API CYdLidar {
   //Turn off lidar connection
   void disconnecting(); //!< Closes the comms with the laser. Shouldn't have to be directly needed by the user
 
+  //get zero angle offset value
+  float getAngleOffset() const;
+
+  //Whether the zero offset angle is corrected?
+  bool isAngleOffetCorrected() const;
+
  protected:
   /** Returns true if communication has been established with the device. If it's not,
     *  try to create a comms channel.
@@ -104,6 +110,12 @@ class YDLIDAR_API CYdLidar {
     * \return false on error.
     */
   bool checkHardware();
+
+  /**
+   * @brief checkRobotOffsetAngleCorrected
+   * @param serialNumber
+   */
+  void checkCalibrationAngle(const std::string &serialNumber);
 
   /** Returns true if the device is in good health, If it's not*/
   bool getDeviceHealth();
@@ -127,6 +139,9 @@ class YDLIDAR_API CYdLidar {
   uint64_t node_duration;
   uint64_t last_node_time;
   int m_SampleRate;
+  float   m_AngleOffset;
+  bool    m_isAngleOffsetCorrected;
+  std::string m_serial_number;
 
 };	// End of class
 
