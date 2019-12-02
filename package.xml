@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package>
-  <name>ydlidar_ros</name>
+  <name>ydlidar</name>
   <version>1.4.1</version>
   <description>The ydlidar ros package</description>
 
